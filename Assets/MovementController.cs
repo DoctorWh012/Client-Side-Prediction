@@ -41,7 +41,7 @@ public class MovementController : MonoBehaviour
         minTimeBetweenTicks = 1f / NetworkManager.Singleton.ServerTickRate; // Calculate the minTimeBetweenTicks using the serverTickRate defined on the network manager
     }
 
-    void Update()
+    private void Update()
     {
         // This creates a fixed timestep to keep the server and the client syncronized
         timer += Time.deltaTime;

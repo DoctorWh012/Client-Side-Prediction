@@ -43,13 +43,9 @@ public class SimplePlayerMovement : MonoBehaviour
             // if not we start at the first one
             int start = lastReceivedInputs.currentTick > inputs[0].currentTick ? (lastReceivedInputs.currentTick - inputs[0].currentTick) : 0;
 
-            print($"first on the array tick is {inputs[0].currentTick} last is {inputs[inputs.Length - 1].currentTick}");
-            print($"Received {inputs.Length} inputs | newest received tick is{inputs[inputs.Length - 1].currentTick} | last processed is{lastReceivedInputs.currentTick}");
-            print($"Starting to process from {start}");
             // Now that we have when to start we can simply apply all relevant inputs to the player
             for (int i = start; i < inputs.Length - 1; i++)
             {
-                print($"Trying to apply inputs on index {i}");
                 SetInput(inputs[i].vertical, inputs[i].horizontal, inputs[i].jump);
             }
 
