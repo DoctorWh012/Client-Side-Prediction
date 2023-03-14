@@ -340,7 +340,7 @@ private static void Movement(Message message)
 > We just do a check to see if the received server movement is newer than the one we received last
 
 Now finally the last thing we have to do is checking for server reconciliation  
-> In the `Update` method we make a call for a `Reconcoliate` function
+> In the `Update` method we make a call for a `Reconciliate` function
 ```cs
 private void Update()
 {
