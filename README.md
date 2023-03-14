@@ -30,9 +30,9 @@ The TickRate is then used on the MovementController to create a Fixed TimeStep
 
 ```cs
 private void Start()
-    {
-        minTimeBetweenTicks = 1f / NetworkManager.Singleton.ServerTickRate;
-    }
+{
+    minTimeBetweenTicks = 1f / NetworkManager.Singleton.ServerTickRate;
+}
 ```
 
 ```cs
@@ -95,7 +95,6 @@ First we increment our `cspTick` on our fixed TimeStep
 ```cs
 private void Update()
 {
-    // This creates a fixed timestep to keep the server and the client syncronized
     timer += Time.deltaTime;
     while (timer >= minTimeBetweenTicks)
     {
@@ -221,9 +220,10 @@ private void Update()
 for this demo i am sending floats for the vertical/horizontal input, but try to keep the size of the message as small as possible this means using the lowest possible number of bytes for each variable
 
 
-For now this is it before we tackle the Server Reconciliation
+For now this is it before we tackle the Server Reconciliation  
 
-#### Movement Script
+#### Movement Script  
+
 In the movement script we create a `SetInput` function
 ```cs
 public void SetInput(float ver, float hor, bool jmp)
@@ -287,7 +287,7 @@ private static void Input(ushort fromClientId, Message message)
     }   
 ```
 >Here we use Riptide's `MessageHandler` to get the input message then we create an array to save the inputs and set it's size to the `inputQuatity`, after that we just loop in order to get all the messages that the client sent.  
-In  this demo i do not have a player class so i just use a placeholder  to get access to the `serverPlayerMovement` script
+In  this demo i do not have a player class so i just use a placeholder `PlayerManager`  to get access to the `serverPlayerMovement` script
 
 Handling the client's input
 ```cs
@@ -307,5 +307,134 @@ Handling the client's input
     }
 }
 ```
+>First we check to see if the length of input array is more than zero, then we check to see if the newest input is larger than the ones we received last.  
+If it's all ok we simply look where to start applying the inputs and apply them using a loop, after all relevant inputs are done being applied we send the resulting movement back to the client
+```cs
+private void SendMovement()
+{
+    if (!serverPlayer) return;
+    Message message = Message.Create(MessageSendMode.Unreliable, ServerToClientId.movement);
+    message.AddUShort(lastReceivedInputs.currentTick);
+    message.AddVector3(transform.position);
+    NetworkManager.Singleton.Server.SendToAll(message);
+}
+```
+That is all that there is for the Movement Script, now let's go back to the movementController so we can receive the resulting movement and check if there's any need for reconciliation.  
 
---------To Be Finished----------
+#### MovementController  
+
+First thing we are going to do is to receive the resulting movement from the server.
+```cs
+[MessageHandler((ushort)ServerToClientId.movement)]
+private static void Movement(Message message)
+{
+    ushort serverMovementTick = message.GetUShort();
+    Vector3 serverPlayerPos = message.GetVector3();
+    if (serverMovementTick > PlayerManager.Instance.clientMovementController.serverSimulationState.currentTick)
+    {
+        PlayerManager.Instance.clientMovementController.serverSimulationState.position = serverPlayerPos;
+        PlayerManager.Instance.clientMovementController.serverSimulationState.currentTick = serverMovementTick;
+    }
+}
+```
+> We just do a check to see if the received server movement is newer than the one we received last
+
+Now finally the last thing we have to do is checking for server reconciliation  
+> In the `Update` method we make a call for a `Reconcoliate` function
+```cs
+private void Update()
+{
+    timer += Time.deltaTime;
+    while (timer >= minTimeBetweenTicks)
+    {
+        timer -= minTimeBetweenTicks;
+        int cacheIndex = cspTick % StateCacheSize;
+
+        inputStateCache[cacheIndex] = GetInput();
+        simulationStateCache[cacheIndex] = CurrentSimulationState();
+    
+        movement.SetInput(inputStateCache[cacheIndex].vertical, inputStateCache[cacheIndex].horizontal, inputStateCache[cacheIndex].jump);
+
+        SendInput();
+
+        cspTick++;
+    }
+
+    if (serverSimulationState != null) Reconciliate();
+}
+```
+Here's the `Reconciliate` function  
+```cs
+    private void Reconciliate()
+    {
+        // Makes sure that the ServerSimState is not outdated
+        if (serverSimulationState.currentTick <= lastCorrectedFrame) return;
+
+        int cacheIndex = serverSimulationState.currentTick % StateCacheSize;
+
+        ClientInputState cachedInputState = inputStateCache[cacheIndex];
+        SimulationState cachedSimulationState = simulationStateCache[cacheIndex];
+
+        // Find the difference between the Server Player Pos And the Client predicted Pos
+        float posDif = Vector3.Distance(cachedSimulationState.position, serverSimulationState.position);
+
+        // A correction is necessary.
+        if (posDif > 0.001f)
+        {
+            Debug.LogError("Needed reconciliation");
+            // Set the player's position to match the server's state. 
+            transform.position = serverSimulationState.position;
+
+            // Declare the rewindFrame as we're about to resimulate our cached inputs. 
+            ushort rewindTick = serverSimulationState.currentTick;
+
+            // Loop through and apply cached inputs until we're 
+            // caught up to our current simulation frame. 
+            while (rewindTick < cspTick)
+            {
+                // Determine the cache index 
+                int rewindCacheIndex = rewindTick % StateCacheSize;
+
+                // Obtain the cached input and simulation states.
+                ClientInputState rewindCachedInputState = inputStateCache[rewindCacheIndex];
+                SimulationState rewindCachedSimulationState = simulationStateCache[rewindCacheIndex];
+
+                // If there's no state to simulate, for whatever reason, 
+                // increment the rewindFrame and continue.
+                if (rewindCachedInputState == null || rewindCachedSimulationState == null)
+                {
+                    ++rewindTick;
+                    continue;
+                }
+
+                // Process the cached inputs. 
+                movement.SetInput(rewindCachedInputState.vertical, rewindCachedInputState.horizontal, rewindCachedInputState.jump); 
+
+                // Replace the simulationStateCache index with the new value.
+                simulationStateCache[rewindCacheIndex] = CurrentSimulationState();
+                simulationStateCache[rewindCacheIndex].currentTick = rewindTick;
+
+                // Increase the amount of frames that we've rewound.
+                ++rewindTick;
+            }
+        }
+        // Once we're complete, update the lastCorrectedFrame to match.
+        // NOTE: Set this even if there's no correction to be made. 
+        lastCorrectedFrame = serverSimulationState.currentTick;
+    }
+```
+> I decided to leave the comments in this function as it it a somewhat larger function than the ones we did before, and also the comments do explain the workings of it very well  
+> I would recommend downloading the demo as most of the code is well commented out and for you to get a feel of how client side prediction should work
+  
+## 4) Conclusion & Credits
+That's all that there is to client side prediction  
+In a short manner, we simply cache the player Inputs and state with a Tick value as a timestamp  
+We allow the player to move before any of the inputs even hit the server
+Then when they do hit the server we process them and send the resulting position back to the client
+The client then compares the received movement from the ones cached using the Tick if they do not match for some reason the client snaps to the server position and redoes it's movement using the cached inputs  
+  
+>I read lot's of articles about client side prediction, but most of them resorted for pseudo networking code, so i decided to write this using actual networking code  
+
+I used these articles as a reference to this project: [Client-Side Prediction With Physics In Unity](https://www.codersblock.org/blog/client-side-prediction-in-unity-2018) & [Seamless fast paced multiplayer in Unity3D](https://medium.com/@christian.tucker_68732/seamless-fast-paced-multiplayer-in-unity3d-implementing-client-side-prediction-ab520bf49bd1)
+
+--This is the first "Article" i've ever wrote, i am also not a native english speaker so if there's anything wrong or missing feel free to contact me.
