@@ -6,8 +6,8 @@ Client side prediction is allowing the client to predict it's own movement in an
 It is used for hiding the latency from the server receiving the input and sending it back to the player
 
 # Server reconciliation 
-Sometimes the player's position may dirft from the position on the server, As our enviroment is server authoritative we always trust the server
-This means snaping the player to the position received from the server and processing the inputs again resulting in a prediction of what the correct position is
+Sometimes the client position may drift from the position on the server, As our enviroment is server authoritative we always trust the server
+This means snaping the client to the position received from the server and processing the inputs again resulting in a prediction of what the correct position is
 
 # Requirements
 In this demo i am using [Riptide Networking](https://riptide.tomweiland.net/manual/overview/about-riptide.html) but you can use any networking implementation
@@ -149,8 +149,8 @@ private SimulationState CurrentSimulationState()
 You can also notice the use of a `cacheIndex` what it does is that it serves as an index for where to save the current Simulation/Inputs on the arrays and if the `cspTick` 
 goes over the cache size it starts from the beginning
 
-Now that we have cached our inputs and simulation state we can some actual client side prediction  
-Which mean we are going to process the result of the inputs before sending them to the server  
+Now that we have cached our inputs and simulation state we can do some actual client side prediction  
+Which means we are going to process the result of the inputs before sending them to the server  
 ```cs 
 private void Update()
 {
@@ -170,10 +170,10 @@ private void Update()
     }
 }
 ```
-> As you can see we have a reference to a script called movement, Movement controller is responsible for getting and sending the player input to the server as well as doing server reconciliation.  
-The movement script is responsible for getting the player input and moving the player as well as sending the result of the input back to the client, the movementController should run only on the localPlayer and the movement should run both in the local and netPlayer
+> As you can see we have a reference to a script called movement, `Movementcontroller` is responsible for getting and sending the player input to the server as well as doing server reconciliation.  
+The `Movement` script is responsible for receiving the player input and moving the player as well as sending the result of the movement back to the client, the `MovementController` should run only on the localPlayer and the movement should run both in the local and netPlayer
 
-We will have a look on the movement script soon but first let's first send the inputs to the server  
+We will have a look on the movement script soon but first let's send the inputs to the server  
 ```cs
 private void Update()
 {
@@ -286,7 +286,7 @@ private static void Input(ushort fromClientId, Message message)
     PlayerManager.Instance.serverPlayerMovement.HandleClientInput(inputs);
     }   
 ```
->Here we use Riptide's `MessageHandler` to get the input message then we create an array to save the inputs and set it's size to the `inputQuatity`, after that we just loop in order to get all the messages that the client sent.  
+>Here we use Riptide's `MessageHandler` to get the input message, then we create an array to save the inputs and set it's size to the `inputQuatity`, after that we just loop in order to get all the messages that the client sent.  
 In  this demo i do not have a player class so i just use a placeholder `PlayerManager`  to get access to the `serverPlayerMovement` script
 
 Handling the client's input
@@ -307,7 +307,7 @@ Handling the client's input
     }
 }
 ```
->First we check to see if the length of input array is more than zero, then we check to see if the newest input is larger than the ones we received last.  
+>First we check to see if the length of input array is more than zero, then we check to see if the newest input tick is larger than the ones we received before.  
 If it's all ok we simply look where to start applying the inputs and apply them using a loop, after all relevant inputs are done being applied we send the resulting movement back to the client
 ```cs
 private void SendMovement()
@@ -337,7 +337,7 @@ private static void Movement(Message message)
     }
 }
 ```
-> We just do a check to see if the received server movement is newer than the one we received last
+> We just do a check to see if the received server movement is newer than the one we received before
 
 Now finally the last thing we have to do is checking for server reconciliation  
 > In the `Update` method we make a call for a `Reconciliate` function
@@ -423,8 +423,8 @@ Here's the `Reconciliate` function
         lastCorrectedFrame = serverSimulationState.currentTick;
     }
 ```
-> I decided to leave the comments in this function as it it a somewhat larger function than the ones we did before, and also the comments do explain the workings of it very well  
-> I would recommend downloading the demo as most of the code is well commented out and for you to get a feel of how client side prediction should work
+> I decided to leave the comments in this function as it it a somewhat a larger function than the ones we did before, and also the comments do explain the workings of it very well  
+> I would recommend downloading the demo as most of the code is well commented out, and for you to get a feel of how client side prediction should work
   
 ## 4) Conclusion & Credits
 That's all that there is to client side prediction  
